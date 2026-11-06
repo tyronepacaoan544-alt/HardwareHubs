@@ -23,10 +23,11 @@ require_once "../config/db.php";
 
 
 // ========================================
-// GET PRODUCT ID
+// GET CUSTOMER ID
 // ========================================
 
 $id = isset($_GET["id"]) ? (int)$_GET["id"] : 0;
+
 
 if ($id <= 0) {
 
@@ -42,23 +43,23 @@ if ($id <= 0) {
 
 $error = "";
 
-$productName = "";
-$category = "";
-$price = "";
-$stock = "";
-$status = "";
+$customerName = "";
+$address = "";
+$contact = "";
 
 
 // ========================================
-// GET PRODUCT
+// GET CUSTOMER
 // ========================================
 
-$sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
-        FROM products
-        WHERE ProductID = ?
+$sql = "SELECT CustomerID, CustomerName, Address, Contact
+        FROM customers
+        WHERE CustomerID = ?
         LIMIT 1";
 
+
 $stmt = $conn->prepare($sql);
+
 
 if (!$stmt) {
 
@@ -66,14 +67,13 @@ if (!$stmt) {
 
 }
 
+
 $stmt->bind_param("i", $id);
 
 $stmt->execute();
 
 $result = $stmt->get_result();
 
-
-// Product not found
 
 if ($result->num_rows !== 1) {
 
@@ -85,88 +85,63 @@ if ($result->num_rows !== 1) {
 }
 
 
-$product = $result->fetch_assoc();
+$customer = $result->fetch_assoc();
 
 $stmt->close();
 
 
 // ========================================
-// LOAD PRODUCT VALUES
+// LOAD VALUES
 // ========================================
 
-$productName = $product["ProductName"];
-$category = $product["Category"];
-$price = $product["Price"];
-$stock = $product["Stock"];
-$status = $product["Status"];
+$customerName = $customer["CustomerName"];
+$address = $customer["Address"] ?? "";
+$contact = $customer["Contact"] ?? "";
 
 
 // ========================================
-// UPDATE PRODUCT
+// UPDATE CUSTOMER
 // ========================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $productName = trim($_POST["productName"] ?? "");
-    $category = trim($_POST["category"] ?? "");
-    $price = trim($_POST["price"] ?? "");
-    $stock = trim($_POST["stock"] ?? "");
-    $status = trim($_POST["status"] ?? "");
+    $customerName = trim($_POST["customerName"] ?? "");
+    $address = trim($_POST["address"] ?? "");
+    $contact = trim($_POST["contact"] ?? "");
 
 
     // ========================================
     // VALIDATION
     // ========================================
 
-    if ($productName === "") {
+    if ($customerName === "") {
 
-        $error = "Please enter the product name.";
+        $error = "Please enter the customer name.";
 
-    } elseif ($category === "") {
+    } elseif (strlen($customerName) > 100) {
 
-        $error = "Please enter the category.";
+        $error = "Customer name cannot exceed 100 characters.";
 
-    } elseif ($price === "") {
+    } elseif (strlen($address) > 255) {
 
-        $error = "Please enter the price.";
+        $error = "Address cannot exceed 255 characters.";
 
-    } elseif (!is_numeric($price) || $price < 0) {
+    } elseif (strlen($contact) > 30) {
 
-        $error = "Please enter a valid price.";
-
-    } elseif ($stock === "") {
-
-        $error = "Please enter the stock quantity.";
-
-    } elseif (
-        !is_numeric($stock) ||
-        $stock < 0 ||
-        floor((float)$stock) != (float)$stock
-    ) {
-
-        $error = "Stock must be a whole number and cannot be negative.";
-
-    } elseif ($status === "") {
-
-        $error = "Please select a status.";
+        $error = "Contact cannot exceed 30 characters.";
 
     } else {
 
-        $price = (float)$price;
-        $stock = (int)$stock;
-
 
         // ========================================
-        // UPDATE DATABASE
+        // UPDATE
         // ========================================
 
-        $sql = "UPDATE products
-                SET ProductName = ?,
-                    Category = ?,
-                    Price = ?,
-                    Stock = ?,
-                    Status = ?
-                WHERE ProductID = ?";
+        $sql = "UPDATE customers
+                SET CustomerName = ?,
+                    Address = ?,
+                    Contact = ?
+                WHERE CustomerID = ?";
 
 
         $stmt = $conn->prepare($sql);
@@ -179,12 +154,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         } else {
 
             $stmt->bind_param(
-                "ssdisi",
-                $productName,
-                $category,
-                $price,
-                $stock,
-                $status,
+                "sssi",
+                $customerName,
+                $address,
+                $contact,
                 $id
             );
 
@@ -198,12 +171,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             } else {
 
-                $error = "Failed to update product: " . $stmt->error;
+                $error = "Failed to update customer: " . $stmt->error;
+
+                $stmt->close();
 
             }
-
-
-            $stmt->close();
 
         }
 
@@ -225,7 +197,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>HardwareHubs - Edit Product</title>
+    <title>HardwareHubs - Edit Customer</title>
 
 
     <link
@@ -261,8 +233,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             font-weight: 600;
         }
 
-        .form-control,
-        .form-select {
+        .form-control {
             min-height: 45px;
         }
 
@@ -274,9 +245,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <body>
 
 
-<!-- ======================================== -->
 <!-- NAVBAR -->
-<!-- ======================================== -->
 
 <nav class="navbar navbar-dark bg-dark">
 
@@ -320,9 +289,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 
 
-<!-- ======================================== -->
-<!-- MAIN CONTENT -->
-<!-- ======================================== -->
+<!-- MAIN -->
 
 <div class="container py-5">
 
@@ -334,11 +301,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <div class="mb-4">
 
                 <h1 class="page-title">
-                    Edit Product
+                    Edit Customer
                 </h1>
 
                 <p class="text-muted">
-                    Update the product information below.
+                    Update the customer information.
                 </p>
 
             </div>
@@ -369,153 +336,71 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 >
 
 
-                    <!-- PRODUCT NAME -->
+                    <!-- CUSTOMER NAME -->
 
                     <div class="mb-3">
 
                         <label
-                            for="productName"
+                            for="customerName"
                             class="form-label"
                         >
-                            Product Name
+                            Customer Name
                         </label>
 
                         <input
                             type="text"
-                            id="productName"
-                            name="productName"
+                            id="customerName"
+                            name="customerName"
                             class="form-control"
                             maxlength="100"
-                            value="<?php echo htmlspecialchars($productName); ?>"
+                            value="<?php echo htmlspecialchars($customerName); ?>"
                             required
                         >
 
                     </div>
 
 
-                    <!-- CATEGORY -->
+                    <!-- ADDRESS -->
 
                     <div class="mb-3">
 
                         <label
-                            for="category"
+                            for="address"
                             class="form-label"
                         >
-                            Category
+                            Address
                         </label>
 
-                        <input
-                            type="text"
-                            id="category"
-                            name="category"
+                        <textarea
+                            id="address"
+                            name="address"
                             class="form-control"
-                            maxlength="100"
-                            value="<?php echo htmlspecialchars($category); ?>"
-                            required
-                        >
+                            rows="4"
+                            maxlength="255"
+                        ><?php echo htmlspecialchars($address); ?></textarea>
 
                     </div>
 
 
-                    <!-- PRICE -->
-
-                    <div class="mb-3">
-
-                        <label
-                            for="price"
-                            class="form-label"
-                        >
-                            Price
-                        </label>
-
-                        <div class="input-group">
-
-                            <span class="input-group-text">
-                                ₱
-                            </span>
-
-                            <input
-                                type="number"
-                                id="price"
-                                name="price"
-                                class="form-control"
-                                min="0"
-                                step="0.01"
-                                value="<?php echo htmlspecialchars($price); ?>"
-                                required
-                            >
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- STOCK -->
-
-                    <div class="mb-3">
-
-                        <label
-                            for="stock"
-                            class="form-label"
-                        >
-                            Stock Quantity
-                        </label>
-
-                        <input
-                            type="number"
-                            id="stock"
-                            name="stock"
-                            class="form-control"
-                            min="0"
-                            step="1"
-                            value="<?php echo htmlspecialchars($stock); ?>"
-                            required
-                        >
-
-                    </div>
-
-
-                    <!-- STATUS -->
+                    <!-- CONTACT -->
 
                     <div class="mb-4">
 
                         <label
-                            for="status"
+                            for="contact"
                             class="form-label"
                         >
-                            Status
+                            Contact Number
                         </label>
 
-                        <select
-                            id="status"
-                            name="status"
-                            class="form-select"
-                            required
+                        <input
+                            type="text"
+                            id="contact"
+                            name="contact"
+                            class="form-control"
+                            maxlength="30"
+                            value="<?php echo htmlspecialchars($contact); ?>"
                         >
-
-                            <option
-                                value="Available"
-                                <?php
-                                echo $status === "Available"
-                                    ? "selected"
-                                    : "";
-                                ?>
-                            >
-                                Available
-                            </option>
-
-                            <option
-                                value="Unavailable"
-                                <?php
-                                echo $status === "Unavailable"
-                                    ? "selected"
-                                    : "";
-                                ?>
-                            >
-                                Unavailable
-                            </option>
-
-                        </select>
 
                     </div>
 
@@ -530,6 +415,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         >
                             Save Changes
                         </button>
+
 
                         <a
                             href="index.php"
