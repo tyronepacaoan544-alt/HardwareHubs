@@ -2,140 +2,72 @@
 
 session_start();
 
+
+// ========================================
+// CHECK LOGIN
+// ========================================
+
 if (!isset($_SESSION["UserID"])) {
+
     header("Location: ../login.php");
     exit();
+
 }
+
+
+// ========================================
+// DATABASE
+// ========================================
 
 require_once "../config/db.php";
 
 
-/* =========================
-   TOTAL SALES
-========================= */
+// ========================================
+// SEARCH
+// ========================================
 
-$sql = "SELECT COALESCE(SUM(TotalAmount), 0) AS TotalSales
-        FROM orders";
+$search = trim($_GET["search"] ?? "");
 
-$result = $conn->query($sql);
 
-$totalSales = 0;
+// ========================================
+// GET PRODUCTS
+// ========================================
 
-if ($result) {
-    $data = $result->fetch_assoc();
-    $totalSales = (float)$data["TotalSales"];
+if ($search !== "") {
+
+    $sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
+            FROM products
+            WHERE ProductName LIKE ?
+               OR Category LIKE ?
+            ORDER BY ProductID DESC";
+
+    $stmt = $conn->prepare($sql);
+
+    $searchValue = "%" . $search . "%";
+
+    $stmt->bind_param(
+        "ss",
+        $searchValue,
+        $searchValue
+    );
+
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+
+} else {
+
+    $sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
+            FROM products
+            ORDER BY ProductID DESC";
+
+    $result = $conn->query($sql);
+
 }
-
-
-/* =========================
-   TOTAL ORDERS
-========================= */
-
-$sql = "SELECT COUNT(*) AS TotalOrders
-        FROM orders";
-
-$result = $conn->query($sql);
-
-$totalOrders = 0;
-
-if ($result) {
-    $data = $result->fetch_assoc();
-    $totalOrders = (int)$data["TotalOrders"];
-}
-
-
-/* =========================
-   TOTAL CUSTOMERS
-========================= */
-
-$sql = "SELECT COUNT(*) AS TotalCustomers
-        FROM customers";
-
-$result = $conn->query($sql);
-
-$totalCustomers = 0;
-
-if ($result) {
-    $data = $result->fetch_assoc();
-    $totalCustomers = (int)$data["TotalCustomers"];
-}
-
-
-/* =========================
-   TOTAL PRODUCTS
-========================= */
-
-$sql = "SELECT COUNT(*) AS TotalProducts
-        FROM products";
-
-$result = $conn->query($sql);
-
-$totalProducts = 0;
-
-if ($result) {
-    $data = $result->fetch_assoc();
-    $totalProducts = (int)$data["TotalProducts"];
-}
-
-
-/* =========================
-   TOTAL STOCK
-========================= */
-
-$sql = "SELECT COALESCE(SUM(Stock), 0) AS TotalStock
-        FROM products";
-
-$result = $conn->query($sql);
-
-$totalStock = 0;
-
-if ($result) {
-    $data = $result->fetch_assoc();
-    $totalStock = (int)$data["TotalStock"];
-}
-
-
-/* =========================
-   LOW STOCK PRODUCTS
-========================= */
-
-$sql = "SELECT
-            ProductID,
-            ProductName,
-            Category,
-            Price,
-            Stock,
-            Status
-        FROM products
-        WHERE Stock <= 5
-        ORDER BY Stock ASC, ProductName ASC";
-
-$lowStockResult = $conn->query($sql);
-
-
-/* =========================
-   RECENT ORDERS
-========================= */
-
-$sql = "SELECT
-            o.OrderID,
-            o.OrderDate,
-            o.TotalAmount,
-            o.Payment,
-            o.ChangeAmount,
-            c.CustomerName
-        FROM orders o
-        INNER JOIN customers c
-            ON o.CustomerID = c.CustomerID
-        ORDER BY o.OrderID DESC
-        LIMIT 10";
-
-$recentOrdersResult = $conn->query($sql);
 
 ?>
 
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
@@ -147,19 +79,21 @@ $recentOrdersResult = $conn->query($sql);
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>
-        Reports - HardwareHubs
-    </title>
+    <title>HardwareHubs - Products</title>
+
+
+    <!-- Bootstrap -->
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
 
+
     <style>
 
         body {
-            background-color: #f1f3f5;
+            background-color: #f5f6f8;
             font-family: Arial, sans-serif;
         }
 
@@ -171,20 +105,9 @@ $recentOrdersResult = $conn->query($sql);
             font-weight: bold;
         }
 
-        .report-card {
-            background: white;
+        .product-card {
+            border: none;
             border-radius: 15px;
-            padding: 25px;
-            height: 100%;
-        }
-
-        .stat-number {
-            font-size: 30px;
-            font-weight: bold;
-        }
-
-        .stat-label {
-            color: #6c757d;
         }
 
         .table-container {
@@ -198,24 +121,21 @@ $recentOrdersResult = $conn->query($sql);
             color: white;
         }
 
-        .section-title {
-            font-weight: bold;
-        }
-
     </style>
 
 </head>
 
+
 <body>
 
 
-<!-- =========================
-     NAVBAR
-========================= -->
+<!-- ======================================== -->
+<!-- NAVBAR -->
+<!-- ======================================== -->
 
 <nav class="navbar navbar-dark bg-dark">
 
-    <div class="container">
+    <div class="container-fluid px-4">
 
         <a
             class="navbar-brand"
@@ -230,9 +150,10 @@ $recentOrdersResult = $conn->query($sql);
             <span class="text-white me-3">
 
                 Welcome,
-                <?php
-                echo htmlspecialchars($_SESSION["Username"]);
-                ?>
+
+                <strong>
+                    <?php echo htmlspecialchars($_SESSION["Username"]); ?>
+                </strong>
 
             </span>
 
@@ -251,186 +172,92 @@ $recentOrdersResult = $conn->query($sql);
 </nav>
 
 
-<!-- =========================
-     MAIN CONTENT
-========================= -->
+
+<!-- ======================================== -->
+<!-- MAIN CONTENT -->
+<!-- ======================================== -->
 
 <div class="container py-5">
 
 
     <!-- HEADER -->
 
-    <div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
 
-        <h1 class="page-title">
-            Reports
-        </h1>
+        <div>
 
-        <p class="text-muted">
-            View HardwareHubs sales, orders, customers, and inventory summaries.
-        </p>
+            <h1 class="page-title">
+                Products
+            </h1>
+
+            <p class="text-muted mb-0">
+                Manage hardware products and inventory.
+            </p>
+
+        </div>
+
+
+        <a
+            href="add.php"
+            class="btn btn-primary"
+        >
+            + Add Product
+        </a>
 
     </div>
 
 
-    <!-- =========================
-         SUMMARY CARDS
-    ========================= -->
 
-    <div class="row g-4 mb-4">
-
-
-        <!-- TOTAL SALES -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="report-card shadow-sm">
-
-                <div class="stat-label">
-                    Total Sales
-                </div>
-
-                <div class="stat-number text-success">
-
-                    ₱<?php
-                    echo number_format(
-                        $totalSales,
-                        2
-                    );
-                    ?>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- TOTAL ORDERS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="report-card shadow-sm">
-
-                <div class="stat-label">
-                    Total Orders
-                </div>
-
-                <div class="stat-number text-primary">
-
-                    <?php
-                    echo number_format($totalOrders);
-                    ?>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- CUSTOMERS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="report-card shadow-sm">
-
-                <div class="stat-label">
-                    Total Customers
-                </div>
-
-                <div class="stat-number text-info">
-
-                    <?php
-                    echo number_format($totalCustomers);
-                    ?>
-
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- PRODUCTS -->
-
-        <div class="col-md-6 col-lg-3">
-
-            <div class="report-card shadow-sm">
-
-                <div class="stat-label">
-                    Total Products
-                </div>
-
-                <div class="stat-number text-warning">
-
-                    <?php
-                    echo number_format($totalProducts);
-                    ?>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- =========================
-         INVENTORY SUMMARY
-    ========================= -->
-
-    <div class="row g-4 mb-4">
-
-        <div class="col-md-4">
-
-            <div class="report-card shadow-sm">
-
-                <div class="stat-label">
-                    Total Product Stock
-                </div>
-
-                <div class="stat-number">
-
-                    <?php
-                    echo number_format($totalStock);
-                    ?>
-
-                </div>
-
-                <small class="text-muted">
-                    Total quantity currently in inventory.
-                </small>
-
-            </div>
-
-        </div>
-
-    </div>
-
-
-    <!-- =========================
-         RECENT ORDERS
-    ========================= -->
+    <!-- ======================================== -->
+    <!-- SEARCH -->
+    <!-- ======================================== -->
 
     <div class="table-container shadow-sm mb-4">
 
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <form
+            method="GET"
+            action="index.php"
+        >
 
-            <h4 class="section-title mb-0">
-                Recent Orders
-            </h4>
+            <div class="row g-2">
 
-            <a
-                href="../orders/index.php"
-                class="btn btn-primary btn-sm"
-            >
-                View All Orders
-            </a>
+                <div class="col-md-10">
 
-        </div>
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="Search product name or category..."
+                        value="<?php echo htmlspecialchars($search); ?>"
+                    >
 
+                </div>
+
+
+                <div class="col-md-2">
+
+                    <button
+                        type="submit"
+                        class="btn btn-dark w-100"
+                    >
+                        Search
+                    </button>
+
+                </div>
+
+            </div>
+
+        </form>
+
+    </div>
+
+
+
+    <!-- ======================================== -->
+    <!-- PRODUCTS TABLE -->
+    <!-- ======================================== -->
+
+    <div class="table-container shadow-sm">
 
         <div class="table-responsive">
 
@@ -441,179 +268,7 @@ $recentOrdersResult = $conn->query($sql);
                     <tr>
 
                         <th>
-                            Order ID
-                        </th>
-
-                        <th>
-                            Customer
-                        </th>
-
-                        <th>
-                            Date
-                        </th>
-
-                        <th>
-                            Total Amount
-                        </th>
-
-                        <th>
-                            Payment
-                        </th>
-
-                        <th>
-                            Change
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody>
-
-                    <?php if (
-                        $recentOrdersResult &&
-                        $recentOrdersResult->num_rows > 0
-                    ): ?>
-
-                        <?php while (
-                            $order = $recentOrdersResult->fetch_assoc()
-                        ): ?>
-
-                            <tr>
-
-                                <td>
-
-                                    #<?php
-                                    echo $order["OrderID"];
-                                    ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $order["CustomerName"]
-                                    );
-                                    ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    <?php
-                                    echo date(
-                                        "M d, Y h:i A",
-                                        strtotime(
-                                            $order["OrderDate"]
-                                        )
-                                    );
-                                    ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    ₱<?php
-                                    echo number_format(
-                                        $order["TotalAmount"],
-                                        2
-                                    );
-                                    ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    ₱<?php
-                                    echo number_format(
-                                        $order["Payment"],
-                                        2
-                                    );
-                                    ?>
-
-                                </td>
-
-
-                                <td>
-
-                                    ₱<?php
-                                    echo number_format(
-                                        $order["ChangeAmount"],
-                                        2
-                                    );
-                                    ?>
-
-                                </td>
-
-                            </tr>
-
-                        <?php endwhile; ?>
-
-
-                    <?php else: ?>
-
-                        <tr>
-
-                            <td
-                                colspan="6"
-                                class="text-center text-muted py-4"
-                            >
-
-                                No orders found.
-
-                            </td>
-
-                        </tr>
-
-                    <?php endif; ?>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
-
-    <!-- =========================
-         LOW STOCK
-    ========================= -->
-
-    <div class="table-container shadow-sm mb-4">
-
-        <div class="d-flex justify-content-between align-items-center mb-3">
-
-            <h4 class="section-title mb-0">
-                Low Stock Products
-            </h4>
-
-            <a
-                href="../products/index.php"
-                class="btn btn-primary btn-sm"
-            >
-                View Products
-            </a>
-
-        </div>
-
-
-        <div class="table-responsive">
-
-            <table class="table table-bordered table-hover align-middle">
-
-                <thead>
-
-                    <tr>
-
-                        <th>
-                            Product ID
+                            ID
                         </th>
 
                         <th>
@@ -636,6 +291,10 @@ $recentOrdersResult = $conn->query($sql);
                             Status
                         </th>
 
+                        <th>
+                            Actions
+                        </th>
+
                     </tr>
 
                 </thead>
@@ -643,118 +302,120 @@ $recentOrdersResult = $conn->query($sql);
 
                 <tbody>
 
-                    <?php if (
-                        $lowStockResult &&
-                        $lowStockResult->num_rows > 0
-                    ): ?>
+                <?php if ($result && $result->num_rows > 0): ?>
 
-                        <?php while (
-                            $product = $lowStockResult->fetch_assoc()
-                        ): ?>
+                    <?php while ($product = $result->fetch_assoc()): ?>
 
-                            <tr>
+                        <tr>
 
-                                <td>
-
-                                    #<?php
-                                    echo $product["ProductID"];
-                                    ?>
-
-                                </td>
+                            <td>
+                                <?php echo $product["ProductID"]; ?>
+                            </td>
 
 
-                                <td>
+                            <td>
 
+                                <strong>
                                     <?php
                                     echo htmlspecialchars(
                                         $product["ProductName"]
                                     );
                                     ?>
+                                </strong>
 
-                                </td>
-
-
-                                <td>
-
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $product["Category"]
-                                    );
-                                    ?>
-
-                                </td>
+                            </td>
 
 
-                                <td>
-
-                                    ₱<?php
-                                    echo number_format(
-                                        $product["Price"],
-                                        2
-                                    );
-                                    ?>
-
-                                </td>
+                            <td>
+                                <?php
+                                echo htmlspecialchars(
+                                    $product["Category"]
+                                );
+                                ?>
+                            </td>
 
 
-                                <td>
+                            <td>
 
-                                    <?php if (
-                                        (int)$product["Stock"] <= 0
-                                    ): ?>
+                                ₱
+                                <?php
+                                echo number_format(
+                                    $product["Price"],
+                                    2
+                                );
+                                ?>
 
-                                        <span class="badge bg-danger">
-                                            Out of Stock
-                                        </span>
-
-                                    <?php else: ?>
-
-                                        <span class="badge bg-warning text-dark">
-
-                                            <?php
-                                            echo $product["Stock"];
-                                            ?>
-
-                                            left
-
-                                        </span>
-
-                                    <?php endif; ?>
-
-                                </td>
+                            </td>
 
 
-                                <td>
-
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $product["Status"]
-                                    );
-                                    ?>
-
-                                </td>
-
-                            </tr>
-
-                        <?php endwhile; ?>
+                            <td>
+                                <?php echo $product["Stock"]; ?>
+                            </td>
 
 
-                    <?php else: ?>
+                            <td>
 
-                        <tr>
+                                <?php if ($product["Status"] === "Available"): ?>
 
-                            <td
-                                colspan="6"
-                                class="text-center text-muted py-4"
-                            >
+                                    <span class="badge bg-success">
+                                        Available
+                                    </span>
 
-                                No low-stock products found.
+                                <?php else: ?>
+
+                                    <span class="badge bg-secondary">
+                                        <?php
+                                        echo htmlspecialchars(
+                                            $product["Status"]
+                                        );
+                                        ?>
+                                    </span>
+
+                                <?php endif; ?>
+
+                            </td>
+
+
+                            <td>
+
+                                <a
+                                    href="edit.php?id=<?php echo $product["ProductID"]; ?>"
+                                    class="btn btn-warning btn-sm"
+                                >
+                                    Edit
+                                </a>
+
+
+                                <a
+                                    href="delete.php?id=<?php echo $product["ProductID"]; ?>"
+                                    class="btn btn-danger btn-sm"
+                                    onclick="return confirm('Are you sure you want to delete this product?');"
+                                >
+                                    Delete
+                                </a>
 
                             </td>
 
                         </tr>
 
-                    <?php endif; ?>
+                    <?php endwhile; ?>
+
+
+                <?php else: ?>
+
+                    <tr>
+
+                        <td
+                            colspan="7"
+                            class="text-center text-muted py-4"
+                        >
+                            No products found.
+
+                        </td>
+
+                    </tr>
+
+                <?php endif; ?>
 
                 </tbody>
 
@@ -765,7 +426,8 @@ $recentOrdersResult = $conn->query($sql);
     </div>
 
 
-    <!-- BACK BUTTON -->
+
+    <!-- BACK TO DASHBOARD -->
 
     <div class="mt-4">
 

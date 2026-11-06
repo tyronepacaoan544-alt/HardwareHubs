@@ -2,168 +2,74 @@
 
 session_start();
 
-/*
-|--------------------------------------------------------------------------
-| AUTHENTICATION & DATABASE
-|--------------------------------------------------------------------------
-*/
 
-require_once "../config/auth.php";
+// ========================================
+// CHECK LOGIN
+// ========================================
+
+if (!isset($_SESSION["UserID"])) {
+
+    header("Location: ../login.php");
+    exit();
+
+}
+
+
+// ========================================
+// DATABASE
+// ========================================
+
 require_once "../config/db.php";
 
 
-/*
-|--------------------------------------------------------------------------
-| ADMINISTRATOR ONLY
-|--------------------------------------------------------------------------
-|
-| Only Administrator accounts can delete users.
-|
-*/
+// ========================================
+// GET PRODUCT ID
+// ========================================
 
-requireAdmin();
+$id = isset($_GET["id"]) ? (int)$_GET["id"] : 0;
 
 
-/*
-|--------------------------------------------------------------------------
-| GET USER ID
-|--------------------------------------------------------------------------
-*/
+// ========================================
+// CHECK ID
+// ========================================
 
-$userID = (int)($_GET["id"] ?? 0);
+if ($id <= 0) {
 
-
-/*
-|--------------------------------------------------------------------------
-| CHECK VALID USER ID
-|--------------------------------------------------------------------------
-*/
-
-if ($userID <= 0) {
-
-    header("Location: index.php?error=" . urlencode("Invalid user ID"));
-
+    header("Location: index.php");
     exit();
+
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| PREVENT DELETING CURRENTLY LOGGED-IN USER
-|--------------------------------------------------------------------------
-*/
+// ========================================
+// DELETE PRODUCT
+// ========================================
 
-if ($userID === (int)$_SESSION["UserID"]) {
-
-    header(
-        "Location: index.php?error=" .
-        urlencode("You cannot delete your own account")
-    );
-
-    exit();
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| CHECK IF USER EXISTS
-|--------------------------------------------------------------------------
-*/
-
-$sql = "SELECT UserID, Username, Role
-        FROM users
-        WHERE UserID = ?
-        LIMIT 1";
+$sql = "DELETE FROM products
+        WHERE ProductID = ?";
 
 $stmt = $conn->prepare($sql);
 
 
-if ($stmt === false) {
+if (!$stmt) {
 
-    die(
-        "SQL ERROR: " .
-        htmlspecialchars($conn->error)
-    );
+    die("Database error: " . $conn->error);
+
 }
 
 
-$stmt->bind_param("i", $userID);
+$stmt->bind_param("i", $id);
 
 $stmt->execute();
-
-$result = $stmt->get_result();
-
-
-if (!$result || $result->num_rows === 0) {
-
-    $stmt->close();
-
-    header(
-        "Location: index.php?error=" .
-        urlencode("User not found")
-    );
-
-    exit();
-}
-
-
-$user = $result->fetch_assoc();
 
 $stmt->close();
 
 
-/*
-|--------------------------------------------------------------------------
-| DELETE USER
-|--------------------------------------------------------------------------
-*/
+// ========================================
+// RETURN TO PRODUCTS
+// ========================================
 
-$sql = "DELETE FROM users
-        WHERE UserID = ?";
-
-$stmt = $conn->prepare($sql);
-
-
-if ($stmt === false) {
-
-    die(
-        "SQL ERROR: " .
-        htmlspecialchars($conn->error)
-    );
-}
-
-
-$stmt->bind_param("i", $userID);
-
-
-/*
-|--------------------------------------------------------------------------
-| EXECUTE DELETE
-|--------------------------------------------------------------------------
-*/
-
-if ($stmt->execute()) {
-
-    $stmt->close();
-
-    header(
-        "Location: index.php?success=" .
-        urlencode("User deleted successfully")
-    );
-
-    exit();
-
-
-} else {
-
-    $errorMessage = $stmt->error;
-
-    $stmt->close();
-
-    die(
-        "Failed to delete user: " .
-        htmlspecialchars($errorMessage)
-    );
-}
+header("Location: index.php");
+exit();
 
 ?>

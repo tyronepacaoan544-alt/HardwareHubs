@@ -2,280 +2,216 @@
 
 session_start();
 
-require_once "../config/auth.php";
-require_once "../config/db.php";
 
-requireAdmin();
+// ========================================
+// CHECK LOGIN
+// ========================================
 
+if (!isset($_SESSION["UserID"])) {
 
-/*
-|--------------------------------------------------------------------------
-| GET USER ID
-|--------------------------------------------------------------------------
-*/
-
-$userID = (int)($_GET["id"] ?? 0);
-
-if ($userID <= 0) {
-
-    header(
-        "Location: index.php?error=" .
-        urlencode("Invalid user ID")
-    );
-
+    header("Location: ../login.php");
     exit();
+
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| GET USER
-|--------------------------------------------------------------------------
-*/
+// ========================================
+// DATABASE
+// ========================================
 
-$sql = "SELECT UserID, Username, Role
-        FROM users
-        WHERE UserID = ?
+require_once "../config/db.php";
+
+
+// ========================================
+// GET PRODUCT ID
+// ========================================
+
+$id = isset($_GET["id"]) ? (int)$_GET["id"] : 0;
+
+if ($id <= 0) {
+
+    header("Location: index.php");
+    exit();
+
+}
+
+
+// ========================================
+// VARIABLES
+// ========================================
+
+$error = "";
+
+$productName = "";
+$category = "";
+$price = "";
+$stock = "";
+$status = "";
+
+
+// ========================================
+// GET PRODUCT
+// ========================================
+
+$sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
+        FROM products
+        WHERE ProductID = ?
         LIMIT 1";
 
 $stmt = $conn->prepare($sql);
 
-if ($stmt === false) {
-    die("SQL ERROR: " . $conn->error);
+if (!$stmt) {
+
+    die("Database error: " . $conn->error);
+
 }
 
-$stmt->bind_param("i", $userID);
+$stmt->bind_param("i", $id);
 
 $stmt->execute();
 
 $result = $stmt->get_result();
 
-if (!$result || $result->num_rows === 0) {
+
+// Product not found
+
+if ($result->num_rows !== 1) {
 
     $stmt->close();
 
-    header(
-        "Location: index.php?error=" .
-        urlencode("User not found")
-    );
-
+    header("Location: index.php");
     exit();
+
 }
 
-$user = $result->fetch_assoc();
+
+$product = $result->fetch_assoc();
 
 $stmt->close();
 
 
-/*
-|--------------------------------------------------------------------------
-| FORM SUBMISSION
-|--------------------------------------------------------------------------
-*/
+// ========================================
+// LOAD PRODUCT VALUES
+// ========================================
 
-$error = "";
+$productName = $product["ProductName"];
+$category = $product["Category"];
+$price = $product["Price"];
+$stock = $product["Stock"];
+$status = $product["Status"];
+
+
+// ========================================
+// UPDATE PRODUCT
+// ========================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $username = trim($_POST["username"] ?? "");
-    $role = trim($_POST["role"] ?? "");
-    $password = $_POST["password"] ?? "";
-    $confirmPassword = $_POST["confirm_password"] ?? "";
+    $productName = trim($_POST["productName"] ?? "");
+    $category = trim($_POST["category"] ?? "");
+    $price = trim($_POST["price"] ?? "");
+    $stock = trim($_POST["stock"] ?? "");
+    $status = trim($_POST["status"] ?? "");
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDATION
-    |--------------------------------------------------------------------------
-    */
+    // ========================================
+    // VALIDATION
+    // ========================================
 
-    if ($username === "") {
+    if ($productName === "") {
 
-        $error = "Username is required.";
+        $error = "Please enter the product name.";
 
-    } elseif (strlen($username) < 3) {
+    } elseif ($category === "") {
 
-        $error = "Username must be at least 3 characters.";
+        $error = "Please enter the category.";
 
-    } elseif (
-        $role !== "Administrator"
-        &&
-        $role !== "Staff"
-    ) {
+    } elseif ($price === "") {
 
-        $error = "Invalid role selected.";
+        $error = "Please enter the price.";
 
-    } elseif (
-        $password !== ""
-        &&
-        strlen($password) < 6
-    ) {
+    } elseif (!is_numeric($price) || $price < 0) {
 
-        $error = "Password must be at least 6 characters.";
+        $error = "Please enter a valid price.";
+
+    } elseif ($stock === "") {
+
+        $error = "Please enter the stock quantity.";
 
     } elseif (
-        $password !== ""
-        &&
-        $password !== $confirmPassword
+        !is_numeric($stock) ||
+        $stock < 0 ||
+        floor((float)$stock) != (float)$stock
     ) {
 
-        $error = "Passwords do not match.";
+        $error = "Stock must be a whole number and cannot be negative.";
 
-    }
+    } elseif ($status === "") {
+
+        $error = "Please select a status.";
+
+    } else {
+
+        $price = (float)$price;
+        $stock = (int)$stock;
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | CHECK DUPLICATE USERNAME
-    |--------------------------------------------------------------------------
-    */
+        // ========================================
+        // UPDATE DATABASE
+        // ========================================
 
-    if ($error === "") {
+        $sql = "UPDATE products
+                SET ProductName = ?,
+                    Category = ?,
+                    Price = ?,
+                    Stock = ?,
+                    Status = ?
+                WHERE ProductID = ?";
 
-        $sql = "SELECT UserID
-                FROM users
-                WHERE Username = ?
-                AND UserID != ?
-                LIMIT 1";
 
         $stmt = $conn->prepare($sql);
 
-        if ($stmt === false) {
-            die("SQL ERROR: " . $conn->error);
-        }
 
-        $stmt->bind_param(
-            "si",
-            $username,
-            $userID
-        );
+        if (!$stmt) {
 
-        $stmt->execute();
-
-        $resultCheck = $stmt->get_result();
-
-        if ($resultCheck->num_rows > 0) {
-
-            $error = "Username already exists.";
-
-        }
-
-        $stmt->close();
-    }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | UPDATE USER
-    |--------------------------------------------------------------------------
-    */
-
-    if ($error === "") {
-
-        if ($password !== "") {
-
-            /*
-            | Password was changed
-            */
-
-            $hashedPassword = password_hash(
-                $password,
-                PASSWORD_DEFAULT
-            );
-
-            $sql = "UPDATE users
-                    SET Username = ?,
-                        Password = ?,
-                        Role = ?
-                    WHERE UserID = ?";
-
-            $stmt = $conn->prepare($sql);
-
-            if ($stmt === false) {
-                die("SQL ERROR: " . $conn->error);
-            }
-
-            $stmt->bind_param(
-                "sssi",
-                $username,
-                $hashedPassword,
-                $role,
-                $userID
-            );
+            $error = "Database error: " . $conn->error;
 
         } else {
 
-            /*
-            | Password stays the same
-            */
-
-            $sql = "UPDATE users
-                    SET Username = ?,
-                        Role = ?
-                    WHERE UserID = ?";
-
-            $stmt = $conn->prepare($sql);
-
-            if ($stmt === false) {
-                die("SQL ERROR: " . $conn->error);
-            }
-
             $stmt->bind_param(
-                "ssi",
-                $username,
-                $role,
-                $userID
+                "ssdisi",
+                $productName,
+                $category,
+                $price,
+                $stock,
+                $status,
+                $id
             );
-        }
 
 
-        if ($stmt->execute()) {
+            if ($stmt->execute()) {
 
-            /*
-            | Update current session
-            | if Administrator edits own account
-            */
+                $stmt->close();
 
-            if (
-                (int)$userID ===
-                (int)$_SESSION["UserID"]
-            ) {
+                header("Location: index.php");
+                exit();
 
-                $_SESSION["Username"] = $username;
-                $_SESSION["Role"] = $role;
+            } else {
+
+                $error = "Failed to update product: " . $stmt->error;
+
             }
 
 
             $stmt->close();
 
-            header(
-                "Location: index.php?success=" .
-                urlencode("User updated successfully")
-            );
-
-            exit();
-
-        } else {
-
-            $error = "Failed to update user: " . $stmt->error;
-
-            $stmt->close();
         }
+
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | KEEP FORM VALUES
-    |--------------------------------------------------------------------------
-    */
-
-    $user["Username"] = $username;
-    $user["Role"] = $role;
 }
 
 ?>
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -289,25 +225,45 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Edit User - HardwareHubs</title>
+    <title>HardwareHubs - Edit Product</title>
+
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
 
+
     <style>
 
         body {
-            background-color: #f4f6f9;
+            background-color: #f5f6f8;
+            font-family: Arial, sans-serif;
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 22px;
+        }
+
+        .page-title {
+            font-weight: bold;
         }
 
         .form-card {
-            max-width: 650px;
-            margin: 40px auto;
+            background-color: white;
             border: none;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border-radius: 15px;
+            padding: 30px;
+        }
+
+        .form-label {
+            font-weight: 600;
+        }
+
+        .form-control,
+        .form-select {
+            min-height: 45px;
         }
 
     </style>
@@ -318,23 +274,71 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <body>
 
 
-<div class="container">
+<!-- ======================================== -->
+<!-- NAVBAR -->
+<!-- ======================================== -->
 
-    <div class="card form-card">
+<nav class="navbar navbar-dark bg-dark">
 
-        <div class="card-body p-4">
+    <div class="container-fluid px-4">
+
+        <a
+            class="navbar-brand"
+            href="../dashboard.php"
+        >
+            HardwareHubs
+        </a>
 
 
-            <!-- HEADER -->
+        <div class="d-flex align-items-center">
+
+            <span class="text-white me-3">
+
+                Welcome,
+
+                <strong>
+                    <?php
+                    echo htmlspecialchars($_SESSION["Username"]);
+                    ?>
+                </strong>
+
+            </span>
+
+
+            <a
+                href="../logout.php"
+                class="btn btn-danger btn-sm"
+            >
+                Logout
+            </a>
+
+        </div>
+
+    </div>
+
+</nav>
+
+
+
+<!-- ======================================== -->
+<!-- MAIN CONTENT -->
+<!-- ======================================== -->
+
+<div class="container py-5">
+
+    <div class="row justify-content-center">
+
+        <div class="col-lg-7">
+
 
             <div class="mb-4">
 
-                <h2 class="mb-1">
-                    Edit User
-                </h2>
+                <h1 class="page-title">
+                    Edit Product
+                </h1>
 
-                <p class="text-muted mb-0">
-                    Update username, password, or role.
+                <p class="text-muted">
+                    Update the product information below.
                 </p>
 
             </div>
@@ -346,9 +350,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <div class="alert alert-danger">
 
-                    <strong>Error!</strong>
-
-                    <?= htmlspecialchars($error) ?>
+                    <?php
+                    echo htmlspecialchars($error);
+                    ?>
 
                 </div>
 
@@ -357,129 +361,189 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <!-- FORM -->
 
-            <form
-                method="POST"
-                autocomplete="off"
-            >
+            <div class="card form-card shadow-sm">
+
+                <form
+                    method="POST"
+                    action="edit.php?id=<?php echo $id; ?>"
+                >
 
 
-                <!-- USERNAME -->
+                    <!-- PRODUCT NAME -->
 
-                <div class="mb-3">
+                    <div class="mb-3">
 
-                    <label class="form-label">
-                        Username
-                    </label>
-
-                    <input
-                        type="text"
-                        name="username"
-                        class="form-control"
-                        value="<?= htmlspecialchars($user["Username"]) ?>"
-                        required
-                    >
-
-                </div>
-
-
-                <!-- ROLE -->
-
-                <div class="mb-3">
-
-                    <label class="form-label">
-                        Role
-                    </label>
-
-                    <select
-                        name="role"
-                        class="form-select"
-                        required
-                    >
-
-                        <option
-                            value="Administrator"
-                            <?= $user["Role"] === "Administrator" ? "selected" : "" ?>
+                        <label
+                            for="productName"
+                            class="form-label"
                         >
-                            Administrator
-                        </option>
+                            Product Name
+                        </label>
 
-                        <option
-                            value="Staff"
-                            <?= $user["Role"] === "Staff" ? "selected" : "" ?>
+                        <input
+                            type="text"
+                            id="productName"
+                            name="productName"
+                            class="form-control"
+                            maxlength="100"
+                            value="<?php echo htmlspecialchars($productName); ?>"
+                            required
                         >
-                            Staff
-                        </option>
 
-                    </select>
-
-                </div>
-
-
-                <hr>
-
-
-                <!-- NEW PASSWORD -->
-
-                <div class="mb-3">
-
-                    <label class="form-label">
-                        New Password
-                    </label>
-
-                    <input
-                        type="password"
-                        name="password"
-                        class="form-control"
-                        placeholder="Leave blank to keep current password"
-                    >
-
-                    <div class="form-text">
-                        Leave blank if you do not want to change the password.
                     </div>
 
-                </div>
+
+                    <!-- CATEGORY -->
+
+                    <div class="mb-3">
+
+                        <label
+                            for="category"
+                            class="form-label"
+                        >
+                            Category
+                        </label>
+
+                        <input
+                            type="text"
+                            id="category"
+                            name="category"
+                            class="form-control"
+                            maxlength="100"
+                            value="<?php echo htmlspecialchars($category); ?>"
+                            required
+                        >
+
+                    </div>
 
 
-                <!-- CONFIRM PASSWORD -->
+                    <!-- PRICE -->
 
-                <div class="mb-4">
+                    <div class="mb-3">
 
-                    <label class="form-label">
-                        Confirm New Password
-                    </label>
+                        <label
+                            for="price"
+                            class="form-label"
+                        >
+                            Price
+                        </label>
 
-                    <input
-                        type="password"
-                        name="confirm_password"
-                        class="form-control"
-                        placeholder="Repeat new password"
-                    >
+                        <div class="input-group">
 
-                </div>
+                            <span class="input-group-text">
+                                ₱
+                            </span>
 
+                            <input
+                                type="number"
+                                id="price"
+                                name="price"
+                                class="form-control"
+                                min="0"
+                                step="0.01"
+                                value="<?php echo htmlspecialchars($price); ?>"
+                                required
+                            >
 
-                <!-- BUTTONS -->
+                        </div>
 
-                <div class="d-flex gap-2">
-
-                    <a
-                        href="index.php"
-                        class="btn btn-secondary"
-                    >
-                        ← Cancel
-                    </a>
-
-                    <button
-                        type="submit"
-                        class="btn btn-primary"
-                    >
-                        Save Changes
-                    </button>
-
-                </div>
+                    </div>
 
 
-            </form>
+                    <!-- STOCK -->
+
+                    <div class="mb-3">
+
+                        <label
+                            for="stock"
+                            class="form-label"
+                        >
+                            Stock Quantity
+                        </label>
+
+                        <input
+                            type="number"
+                            id="stock"
+                            name="stock"
+                            class="form-control"
+                            min="0"
+                            step="1"
+                            value="<?php echo htmlspecialchars($stock); ?>"
+                            required
+                        >
+
+                    </div>
+
+
+                    <!-- STATUS -->
+
+                    <div class="mb-4">
+
+                        <label
+                            for="status"
+                            class="form-label"
+                        >
+                            Status
+                        </label>
+
+                        <select
+                            id="status"
+                            name="status"
+                            class="form-select"
+                            required
+                        >
+
+                            <option
+                                value="Available"
+                                <?php
+                                echo $status === "Available"
+                                    ? "selected"
+                                    : "";
+                                ?>
+                            >
+                                Available
+                            </option>
+
+                            <option
+                                value="Unavailable"
+                                <?php
+                                echo $status === "Unavailable"
+                                    ? "selected"
+                                    : "";
+                                ?>
+                            >
+                                Unavailable
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <!-- BUTTONS -->
+
+                    <div class="d-flex gap-2">
+
+                        <button
+                            type="submit"
+                            class="btn btn-primary"
+                        >
+                            Save Changes
+                        </button>
+
+                        <a
+                            href="index.php"
+                            class="btn btn-secondary"
+                        >
+                            Cancel
+                        </a>
+
+                    </div>
+
+
+                </form>
+
+            </div>
 
         </div>
 
