@@ -30,20 +30,33 @@ $search = trim($_GET["search"] ?? "");
 
 
 // ========================================
-// GET PRODUCTS
+// GET ORDERS
 // ========================================
 
 if ($search !== "") {
 
-    $sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
-            FROM products
-            WHERE ProductName LIKE ?
-               OR Category LIKE ?
-            ORDER BY ProductID DESC";
+    $sql = "SELECT
+                o.OrderID,
+                o.CustomerID,
+                o.OrderDate,
+                o.TotalAmount,
+                o.Payment,
+                o.ChangeAmount,
+                c.CustomerName
+            FROM orders o
+            INNER JOIN customers c
+                ON o.CustomerID = c.CustomerID
+            WHERE
+                c.CustomerName LIKE ?
+                OR CAST(o.OrderID AS CHAR) LIKE ?
+            ORDER BY o.OrderID DESC";
+
 
     $stmt = $conn->prepare($sql);
 
+
     $searchValue = "%" . $search . "%";
+
 
     $stmt->bind_param(
         "ss",
@@ -51,15 +64,29 @@ if ($search !== "") {
         $searchValue
     );
 
+
     $stmt->execute();
+
 
     $result = $stmt->get_result();
 
+
 } else {
 
-    $sql = "SELECT ProductID, ProductName, Category, Price, Stock, Status
-            FROM products
-            ORDER BY ProductID DESC";
+
+    $sql = "SELECT
+                o.OrderID,
+                o.CustomerID,
+                o.OrderDate,
+                o.TotalAmount,
+                o.Payment,
+                o.ChangeAmount,
+                c.CustomerName
+            FROM orders o
+            INNER JOIN customers c
+                ON o.CustomerID = c.CustomerID
+            ORDER BY o.OrderID DESC";
+
 
     $result = $conn->query($sql);
 
@@ -79,10 +106,10 @@ if ($search !== "") {
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>HardwareHubs - Products</title>
+    <title>HardwareHubs - Orders</title>
 
 
-    <!-- Bootstrap -->
+    <!-- BOOTSTRAP -->
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
@@ -97,28 +124,33 @@ if ($search !== "") {
             font-family: Arial, sans-serif;
         }
 
+
         .navbar-brand {
             font-weight: bold;
+            font-size: 22px;
         }
+
 
         .page-title {
             font-weight: bold;
         }
 
-        .product-card {
-            border: none;
-            border-radius: 15px;
-        }
 
         .table-container {
-            background: white;
+            background-color: white;
             border-radius: 15px;
             padding: 25px;
         }
 
+
         .table th {
             background-color: #212529;
             color: white;
+        }
+
+
+        .order-total {
+            font-weight: bold;
         }
 
     </style>
@@ -137,6 +169,7 @@ if ($search !== "") {
 
     <div class="container-fluid px-4">
 
+
         <a
             class="navbar-brand"
             href="../dashboard.php"
@@ -147,12 +180,21 @@ if ($search !== "") {
 
         <div class="d-flex align-items-center">
 
+
             <span class="text-white me-3">
 
                 Welcome,
 
                 <strong>
-                    <?php echo htmlspecialchars($_SESSION["Username"]); ?>
+
+                    <?php
+
+                    echo htmlspecialchars(
+                        $_SESSION["Username"]
+                    );
+
+                    ?>
+
                 </strong>
 
             </span>
@@ -164,6 +206,7 @@ if ($search !== "") {
             >
                 Logout
             </a>
+
 
         </div>
 
@@ -180,29 +223,36 @@ if ($search !== "") {
 <div class="container py-5">
 
 
-    <!-- HEADER -->
+    <!-- PAGE HEADER -->
 
     <div class="d-flex justify-content-between align-items-center mb-4">
+
 
         <div>
 
             <h1 class="page-title">
-                Products
+                Orders
             </h1>
 
+
             <p class="text-muted mb-0">
-                Manage hardware products and inventory.
+
+                Manage customer orders and payments.
+
             </p>
 
         </div>
 
 
+        <!-- ADD ORDER -->
+
         <a
             href="add.php"
             class="btn btn-primary"
         >
-            + Add Product
+            + Create Order
         </a>
+
 
     </div>
 
@@ -214,27 +264,33 @@ if ($search !== "") {
 
     <div class="table-container shadow-sm mb-4">
 
+
         <form
             method="GET"
             action="index.php"
         >
 
+
             <div class="row g-2">
 
+
                 <div class="col-md-10">
+
 
                     <input
                         type="text"
                         name="search"
                         class="form-control"
-                        placeholder="Search product name or category..."
+                        placeholder="Search by Order ID or customer name..."
                         value="<?php echo htmlspecialchars($search); ?>"
                     >
+
 
                 </div>
 
 
                 <div class="col-md-2">
+
 
                     <button
                         type="submit"
@@ -243,53 +299,67 @@ if ($search !== "") {
                         Search
                     </button>
 
+
                 </div>
+
 
             </div>
 
+
         </form>
+
 
     </div>
 
 
 
     <!-- ======================================== -->
-    <!-- PRODUCTS TABLE -->
+    <!-- ORDERS TABLE -->
     <!-- ======================================== -->
 
     <div class="table-container shadow-sm">
 
+
         <div class="table-responsive">
+
 
             <table class="table table-bordered table-hover align-middle">
 
+
                 <thead>
+
 
                     <tr>
 
                         <th>
-                            ID
+                            Order ID
                         </th>
 
-                        <th>
-                            Product Name
-                        </th>
 
                         <th>
-                            Category
+                            Customer
                         </th>
 
-                        <th>
-                            Price
-                        </th>
 
                         <th>
-                            Stock
+                            Order Date
                         </th>
 
+
                         <th>
-                            Status
+                            Total Amount
                         </th>
+
+
+                        <th>
+                            Payment
+                        </th>
+
+
+                        <th>
+                            Change
+                        </th>
+
 
                         <th>
                             Actions
@@ -297,139 +367,198 @@ if ($search !== "") {
 
                     </tr>
 
+
                 </thead>
 
 
                 <tbody>
 
+
                 <?php if ($result && $result->num_rows > 0): ?>
 
-                    <?php while ($product = $result->fetch_assoc()): ?>
+
+                    <?php while ($order = $result->fetch_assoc()): ?>
+
 
                         <tr>
 
-                            <td>
-                                <?php echo $product["ProductID"]; ?>
-                            </td>
 
+                            <!-- ORDER ID -->
 
                             <td>
 
                                 <strong>
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $product["ProductName"]
-                                    );
+
+                                    #<?php
+
+                                    echo $order["OrderID"];
+
                                     ?>
+
                                 </strong>
 
                             </td>
 
 
+                            <!-- CUSTOMER -->
+
                             <td>
+
                                 <?php
+
                                 echo htmlspecialchars(
-                                    $product["Category"]
+                                    $order["CustomerName"]
                                 );
+
                                 ?>
+
                             </td>
 
+
+                            <!-- ORDER DATE -->
+
+                            <td>
+
+                                <?php
+
+                                echo date(
+                                    "M d, Y h:i A",
+                                    strtotime(
+                                        $order["OrderDate"]
+                                    )
+                                );
+
+                                ?>
+
+                            </td>
+
+
+                            <!-- TOTAL -->
+
+                            <td class="order-total">
+
+                                ₱
+
+                                <?php
+
+                                echo number_format(
+                                    $order["TotalAmount"],
+                                    2
+                                );
+
+                                ?>
+
+                            </td>
+
+
+                            <!-- PAYMENT -->
 
                             <td>
 
                                 ₱
+
                                 <?php
+
                                 echo number_format(
-                                    $product["Price"],
+                                    $order["Payment"],
                                     2
                                 );
+
                                 ?>
 
                             </td>
 
 
-                            <td>
-                                <?php echo $product["Stock"]; ?>
-                            </td>
-
+                            <!-- CHANGE -->
 
                             <td>
 
-                                <?php if ($product["Status"] === "Available"): ?>
+                                ₱
 
-                                    <span class="badge bg-success">
-                                        Available
-                                    </span>
+                                <?php
 
-                                <?php else: ?>
+                                echo number_format(
+                                    $order["ChangeAmount"],
+                                    2
+                                );
 
-                                    <span class="badge bg-secondary">
-                                        <?php
-                                        echo htmlspecialchars(
-                                            $product["Status"]
-                                        );
-                                        ?>
-                                    </span>
-
-                                <?php endif; ?>
+                                ?>
 
                             </td>
 
 
+                            <!-- ACTIONS -->
+
                             <td>
+
 
                                 <a
-                                    href="edit.php?id=<?php echo $product["ProductID"]; ?>"
-                                    class="btn btn-warning btn-sm"
+                                    href="view.php?id=<?php echo $order["OrderID"]; ?>"
+                                    class="btn btn-info btn-sm"
                                 >
-                                    Edit
+                                    View
                                 </a>
 
 
                                 <a
-                                    href="delete.php?id=<?php echo $product["ProductID"]; ?>"
+                                    href="delete.php?id=<?php echo $order["OrderID"]; ?>"
                                     class="btn btn-danger btn-sm"
-                                    onclick="return confirm('Are you sure you want to delete this product?');"
+                                    onclick="return confirm('Are you sure you want to delete this order?');"
                                 >
                                     Delete
                                 </a>
 
+
                             </td>
 
+
                         </tr>
+
 
                     <?php endwhile; ?>
 
 
                 <?php else: ?>
 
+
                     <tr>
+
 
                         <td
                             colspan="7"
                             class="text-center text-muted py-4"
                         >
-                            No products found.
+
+                            No orders found.
 
                         </td>
 
+
                     </tr>
+
 
                 <?php endif; ?>
 
+
                 </tbody>
+
 
             </table>
 
+
         </div>
+
 
     </div>
 
 
 
+    <!-- ======================================== -->
     <!-- BACK TO DASHBOARD -->
+    <!-- ======================================== -->
 
     <div class="mt-4">
+
 
         <a
             href="../dashboard.php"
@@ -437,6 +566,7 @@ if ($search !== "") {
         >
             ← Back to Dashboard
         </a>
+
 
     </div>
 
