@@ -2,99 +2,140 @@
 
 session_start();
 
-require_once "../config/auth.php";
+if (!isset($_SESSION["UserID"])) {
+    header("Location: ../login.php");
+    exit();
+}
+
 require_once "../config/db.php";
 
-requireAdmin();
 
+/* =========================
+   TOTAL SALES
+========================= */
 
-/*
-|--------------------------------------------------------------------------
-| SUCCESS / ERROR MESSAGE
-|--------------------------------------------------------------------------
-*/
+$sql = "SELECT COALESCE(SUM(TotalAmount), 0) AS TotalSales
+        FROM orders";
 
-$success = trim($_GET["success"] ?? "");
-$error = trim($_GET["error"] ?? "");
+$result = $conn->query($sql);
 
+$totalSales = 0;
 
-/*
-|--------------------------------------------------------------------------
-| SEARCH
-|--------------------------------------------------------------------------
-*/
-
-$search = trim($_GET["search"] ?? "");
-
-
-/*
-|--------------------------------------------------------------------------
-| GET USERS
-|--------------------------------------------------------------------------
-*/
-
-if ($search !== "") {
-
-    $sql = "SELECT UserID, Username, Role
-            FROM users
-            WHERE Username LIKE ?
-               OR Role LIKE ?
-            ORDER BY UserID DESC";
-
-    $stmt = $conn->prepare($sql);
-
-    if ($stmt === false) {
-        die("SQL ERROR: " . $conn->error);
-    }
-
-    $searchValue = "%" . $search . "%";
-
-    $stmt->bind_param(
-        "ss",
-        $searchValue,
-        $searchValue
-    );
-
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-} else {
-
-    $sql = "SELECT UserID, Username, Role
-            FROM users
-            ORDER BY UserID DESC";
-
-    $result = $conn->query($sql);
-
-    if ($result === false) {
-        die("SQL ERROR: " . $conn->error);
-    }
+if ($result) {
+    $data = $result->fetch_assoc();
+    $totalSales = (float)$data["TotalSales"];
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| TOTAL USERS
-|--------------------------------------------------------------------------
-*/
+/* =========================
+   TOTAL ORDERS
+========================= */
 
-$countResult = $conn->query(
-    "SELECT COUNT(*) AS TotalUsers FROM users"
-);
+$sql = "SELECT COUNT(*) AS TotalOrders
+        FROM orders";
 
-$totalUsers = 0;
+$result = $conn->query($sql);
 
-if ($countResult) {
+$totalOrders = 0;
 
-    $countData = $countResult->fetch_assoc();
-
-    $totalUsers = (int)$countData["TotalUsers"];
+if ($result) {
+    $data = $result->fetch_assoc();
+    $totalOrders = (int)$data["TotalOrders"];
 }
+
+
+/* =========================
+   TOTAL CUSTOMERS
+========================= */
+
+$sql = "SELECT COUNT(*) AS TotalCustomers
+        FROM customers";
+
+$result = $conn->query($sql);
+
+$totalCustomers = 0;
+
+if ($result) {
+    $data = $result->fetch_assoc();
+    $totalCustomers = (int)$data["TotalCustomers"];
+}
+
+
+/* =========================
+   TOTAL PRODUCTS
+========================= */
+
+$sql = "SELECT COUNT(*) AS TotalProducts
+        FROM products";
+
+$result = $conn->query($sql);
+
+$totalProducts = 0;
+
+if ($result) {
+    $data = $result->fetch_assoc();
+    $totalProducts = (int)$data["TotalProducts"];
+}
+
+
+/* =========================
+   TOTAL STOCK
+========================= */
+
+$sql = "SELECT COALESCE(SUM(Stock), 0) AS TotalStock
+        FROM products";
+
+$result = $conn->query($sql);
+
+$totalStock = 0;
+
+if ($result) {
+    $data = $result->fetch_assoc();
+    $totalStock = (int)$data["TotalStock"];
+}
+
+
+/* =========================
+   LOW STOCK PRODUCTS
+========================= */
+
+$sql = "SELECT
+            ProductID,
+            ProductName,
+            Category,
+            Price,
+            Stock,
+            Status
+        FROM products
+        WHERE Stock <= 5
+        ORDER BY Stock ASC, ProductName ASC";
+
+$lowStockResult = $conn->query($sql);
+
+
+/* =========================
+   RECENT ORDERS
+========================= */
+
+$sql = "SELECT
+            o.OrderID,
+            o.OrderDate,
+            o.TotalAmount,
+            o.Payment,
+            o.ChangeAmount,
+            c.CustomerName
+        FROM orders o
+        INNER JOIN customers c
+            ON o.CustomerID = c.CustomerID
+        ORDER BY o.OrderID DESC
+        LIMIT 10";
+
+$recentOrdersResult = $conn->query($sql);
 
 ?>
 
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
@@ -106,109 +147,228 @@ if ($countResult) {
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>User Management - HardwareHubs</title>
-
-
-    <!-- Bootstrap -->
+    <title>
+        Reports - HardwareHubs
+    </title>
 
     <link
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         rel="stylesheet"
     >
 
-
     <style>
 
         body {
-            background-color: #f4f6f9;
+            background-color: #f1f3f5;
+            font-family: Arial, sans-serif;
         }
 
-        .page-header {
+        .navbar-brand {
+            font-weight: bold;
+        }
+
+        .page-title {
+            font-weight: bold;
+        }
+
+        .report-card {
             background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border-radius: 15px;
+            padding: 25px;
+            height: 100%;
         }
 
-        .content-card {
-            border: none;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        .stat-number {
+            font-size: 30px;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            color: #6c757d;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
         }
 
         .table th {
-            white-space: nowrap;
+            background-color: #212529;
+            color: white;
         }
 
-        .role-badge {
-            font-size: 0.85rem;
-            padding: 6px 10px;
-        }
-
-        .action-btn {
-            min-width: 70px;
-        }
-
-        .user-icon {
-            width: 45px;
-            height: 45px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #e9ecef;
+        .section-title {
             font-weight: bold;
-            font-size: 18px;
         }
 
     </style>
 
 </head>
 
-
 <body>
 
 
-<div class="container-fluid px-4 py-4">
+<!-- =========================
+     NAVBAR
+========================= -->
+
+<nav class="navbar navbar-dark bg-dark">
+
+    <div class="container">
+
+        <a
+            class="navbar-brand"
+            href="../dashboard.php"
+        >
+            HardwareHubs
+        </a>
 
 
-    <!-- ========================================================= -->
-    <!-- PAGE HEADER -->
-    <!-- ========================================================= -->
+        <div class="d-flex align-items-center">
 
-    <div class="page-header">
+            <span class="text-white me-3">
 
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                Welcome,
+                <?php
+                echo htmlspecialchars($_SESSION["Username"]);
+                ?>
 
-            <div>
+            </span>
 
-                <h2 class="mb-1">
-                    User Management
-                </h2>
 
-                <p class="text-muted mb-0">
-                    Manage system users and their roles.
-                </p>
+            <a
+                href="../logout.php"
+                class="btn btn-danger btn-sm"
+            >
+                Logout
+            </a>
+
+        </div>
+
+    </div>
+
+</nav>
+
+
+<!-- =========================
+     MAIN CONTENT
+========================= -->
+
+<div class="container py-5">
+
+
+    <!-- HEADER -->
+
+    <div class="mb-4">
+
+        <h1 class="page-title">
+            Reports
+        </h1>
+
+        <p class="text-muted">
+            View HardwareHubs sales, orders, customers, and inventory summaries.
+        </p>
+
+    </div>
+
+
+    <!-- =========================
+         SUMMARY CARDS
+    ========================= -->
+
+    <div class="row g-4 mb-4">
+
+
+        <!-- TOTAL SALES -->
+
+        <div class="col-md-6 col-lg-3">
+
+            <div class="report-card shadow-sm">
+
+                <div class="stat-label">
+                    Total Sales
+                </div>
+
+                <div class="stat-number text-success">
+
+                    ₱<?php
+                    echo number_format(
+                        $totalSales,
+                        2
+                    );
+                    ?>
+
+                </div>
 
             </div>
 
+        </div>
 
-            <div class="d-flex gap-2">
 
-                <a
-                    href="../dashboard.php"
-                    class="btn btn-secondary"
-                >
-                    ← Dashboard
-                </a>
+        <!-- TOTAL ORDERS -->
 
-                <a
-                    href="add.php"
-                    class="btn btn-primary"
-                >
-                    + Add User
-                </a>
+        <div class="col-md-6 col-lg-3">
+
+            <div class="report-card shadow-sm">
+
+                <div class="stat-label">
+                    Total Orders
+                </div>
+
+                <div class="stat-number text-primary">
+
+                    <?php
+                    echo number_format($totalOrders);
+                    ?>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- CUSTOMERS -->
+
+        <div class="col-md-6 col-lg-3">
+
+            <div class="report-card shadow-sm">
+
+                <div class="stat-label">
+                    Total Customers
+                </div>
+
+                <div class="stat-number text-info">
+
+                    <?php
+                    echo number_format($totalCustomers);
+                    ?>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- PRODUCTS -->
+
+        <div class="col-md-6 col-lg-3">
+
+            <div class="report-card shadow-sm">
+
+                <div class="stat-label">
+                    Total Products
+                </div>
+
+                <div class="stat-number text-warning">
+
+                    <?php
+                    echo number_format($totalProducts);
+                    ?>
+
+                </div>
 
             </div>
 
@@ -217,94 +377,31 @@ if ($countResult) {
     </div>
 
 
+    <!-- =========================
+         INVENTORY SUMMARY
+    ========================= -->
 
-    <!-- ========================================================= -->
-    <!-- SUCCESS MESSAGE -->
-    <!-- ========================================================= -->
-
-    <?php if ($success !== ""): ?>
-
-        <div
-            class="alert alert-success alert-dismissible fade show"
-            role="alert"
-        >
-
-            <strong>Success!</strong>
-
-            <?= htmlspecialchars($success) ?>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="alert"
-            ></button>
-
-        </div>
-
-    <?php endif; ?>
-
-
-
-    <!-- ========================================================= -->
-    <!-- ERROR MESSAGE -->
-    <!-- ========================================================= -->
-
-    <?php if ($error !== ""): ?>
-
-        <div
-            class="alert alert-danger alert-dismissible fade show"
-            role="alert"
-        >
-
-            <strong>Error!</strong>
-
-            <?= htmlspecialchars($error) ?>
-
-            <button
-                type="button"
-                class="btn-close"
-                data-bs-dismiss="alert"
-            ></button>
-
-        </div>
-
-    <?php endif; ?>
-
-
-
-    <!-- ========================================================= -->
-    <!-- SUMMARY CARD -->
-    <!-- ========================================================= -->
-
-    <div class="row mb-4">
+    <div class="row g-4 mb-4">
 
         <div class="col-md-4">
 
-            <div class="card content-card">
+            <div class="report-card shadow-sm">
 
-                <div class="card-body">
+                <div class="stat-label">
+                    Total Product Stock
+                </div>
 
-                    <div class="d-flex align-items-center gap-3">
+                <div class="stat-number">
 
-                        <div class="user-icon">
-                            👤
-                        </div>
-
-                        <div>
-
-                            <small class="text-muted">
-                                TOTAL USERS
-                            </small>
-
-                            <h3 class="mb-0">
-                                <?= $totalUsers ?>
-                            </h3>
-
-                        </div>
-
-                    </div>
+                    <?php
+                    echo number_format($totalStock);
+                    ?>
 
                 </div>
+
+                <small class="text-muted">
+                    Total quantity currently in inventory.
+                </small>
 
             </div>
 
@@ -313,352 +410,376 @@ if ($countResult) {
     </div>
 
 
+    <!-- =========================
+         RECENT ORDERS
+    ========================= -->
 
-    <!-- ========================================================= -->
-    <!-- SEARCH -->
-    <!-- ========================================================= -->
+    <div class="table-container shadow-sm mb-4">
 
-    <div class="card content-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
 
-        <div class="card-body">
+            <h4 class="section-title mb-0">
+                Recent Orders
+            </h4>
 
-            <form
-                method="GET"
-                class="row g-2"
+            <a
+                href="../orders/index.php"
+                class="btn btn-primary btn-sm"
             >
-
-                <div class="col-md-8">
-
-                    <input
-                        type="text"
-                        name="search"
-                        class="form-control"
-                        placeholder="Search username or role..."
-                        value="<?= htmlspecialchars($search) ?>"
-                    >
-
-                </div>
-
-
-                <div class="col-md-2">
-
-                    <button
-                        type="submit"
-                        class="btn btn-primary w-100"
-                    >
-                        🔎 Search
-                    </button>
-
-                </div>
-
-
-                <div class="col-md-2">
-
-                    <a
-                        href="index.php"
-                        class="btn btn-outline-secondary w-100"
-                    >
-                        Clear
-                    </a>
-
-                </div>
-
-            </form>
+                View All Orders
+            </a>
 
         </div>
 
-    </div>
+
+        <div class="table-responsive">
+
+            <table class="table table-bordered table-hover align-middle">
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            Order ID
+                        </th>
+
+                        <th>
+                            Customer
+                        </th>
+
+                        <th>
+                            Date
+                        </th>
+
+                        <th>
+                            Total Amount
+                        </th>
+
+                        <th>
+                            Payment
+                        </th>
+
+                        <th>
+                            Change
+                        </th>
+
+                    </tr>
+
+                </thead>
 
 
+                <tbody>
 
-    <!-- ========================================================= -->
-    <!-- USER TABLE -->
-    <!-- ========================================================= -->
+                    <?php if (
+                        $recentOrdersResult &&
+                        $recentOrdersResult->num_rows > 0
+                    ): ?>
 
-    <div class="card content-card">
-
-        <div class="card-body">
-
-            <div class="d-flex justify-content-between align-items-center mb-3">
-
-                <h5 class="mb-0">
-                    System Users
-                </h5>
-
-                <?php if ($search !== ""): ?>
-
-                    <span class="text-muted">
-
-                        Search:
-
-                        <strong>
-                            <?= htmlspecialchars($search) ?>
-                        </strong>
-
-                    </span>
-
-                <?php endif; ?>
-
-            </div>
-
-
-
-            <div class="table-responsive">
-
-                <table class="table table-hover align-middle">
-
-                    <thead class="table-dark">
-
-                        <tr>
-
-                            <th>
-                                ID
-                            </th>
-
-                            <th>
-                                Username
-                            </th>
-
-                            <th>
-                                Role
-                            </th>
-
-                            <th class="text-center">
-                                Actions
-                            </th>
-
-                        </tr>
-
-                    </thead>
-
-
-                    <tbody>
-
-
-                    <?php if ($result->num_rows > 0): ?>
-
-
-                        <?php while ($user = $result->fetch_assoc()): ?>
-
+                        <?php while (
+                            $order = $recentOrdersResult->fetch_assoc()
+                        ): ?>
 
                             <tr>
 
+                                <td>
 
-                                <!-- USER ID -->
+                                    #<?php
+                                    echo $order["OrderID"];
+                                    ?>
+
+                                </td>
+
 
                                 <td>
 
-                                    <strong>
-                                        <?= (int)$user["UserID"] ?>
-                                    </strong>
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $order["CustomerName"]
+                                    );
+                                    ?>
 
                                 </td>
 
-
-                                <!-- USERNAME -->
 
                                 <td>
 
-                                    <div class="d-flex align-items-center gap-2">
-
-                                        <div class="user-icon">
-
-                                            <?= strtoupper(
-                                                substr($user["Username"], 0, 1)
-                                            ) ?>
-
-                                        </div>
-
-
-                                        <div>
-
-                                            <strong>
-                                                <?= htmlspecialchars(
-                                                    $user["Username"]
-                                                ) ?>
-                                            </strong>
-
-
-                                            <?php if (
-                                                (int)$user["UserID"]
-                                                ===
-                                                (int)$_SESSION["UserID"]
-                                            ): ?>
-
-                                                <br>
-
-                                                <span class="badge bg-success">
-
-                                                    Current User
-
-                                                </span>
-
-                                            <?php endif; ?>
-
-                                        </div>
-
-                                    </div>
+                                    <?php
+                                    echo date(
+                                        "M d, Y h:i A",
+                                        strtotime(
+                                            $order["OrderDate"]
+                                        )
+                                    );
+                                    ?>
 
                                 </td>
 
-
-                                <!-- ROLE -->
 
                                 <td>
 
-
-                                    <?php if (
-                                        $user["Role"] === "Administrator"
-                                    ): ?>
-
-                                        <span
-                                            class="badge bg-danger role-badge"
-                                        >
-                                            Administrator
-                                        </span>
-
-                                    <?php else: ?>
-
-                                        <span
-                                            class="badge bg-primary role-badge"
-                                        >
-                                            Staff
-                                        </span>
-
-                                    <?php endif; ?>
-
+                                    ₱<?php
+                                    echo number_format(
+                                        $order["TotalAmount"],
+                                        2
+                                    );
+                                    ?>
 
                                 </td>
 
 
-                                <!-- ACTIONS -->
+                                <td>
 
-                                <td class="text-center">
-
-                                    <div class="d-flex justify-content-center gap-2">
-
-
-                                        <!-- EDIT -->
-
-                                        <a
-                                            href="edit.php?id=<?= (int)$user["UserID"] ?>"
-                                            class="btn btn-sm btn-warning action-btn"
-                                        >
-                                            Edit
-                                        </a>
-
-
-                                        <?php if (
-                                            (int)$user["UserID"]
-                                            !==
-                                            (int)$_SESSION["UserID"]
-                                        ): ?>
-
-
-                                            <!-- DELETE -->
-
-                                            <a
-                                                href="delete.php?id=<?= (int)$user["UserID"] ?>"
-                                                class="btn btn-sm btn-danger action-btn"
-                                                onclick="return confirm('Are you sure you want to delete this user?');"
-                                            >
-                                                Delete
-                                            </a>
-
-
-                                        <?php else: ?>
-
-
-                                            <button
-                                                type="button"
-                                                class="btn btn-sm btn-secondary action-btn"
-                                                disabled
-                                            >
-                                                Delete
-                                            </button>
-
-
-                                        <?php endif; ?>
-
-
-                                    </div>
+                                    ₱<?php
+                                    echo number_format(
+                                        $order["Payment"],
+                                        2
+                                    );
+                                    ?>
 
                                 </td>
 
+
+                                <td>
+
+                                    ₱<?php
+                                    echo number_format(
+                                        $order["ChangeAmount"],
+                                        2
+                                    );
+                                    ?>
+
+                                </td>
 
                             </tr>
-
 
                         <?php endwhile; ?>
 
 
                     <?php else: ?>
 
-
                         <tr>
 
                             <td
-                                colspan="4"
-                                class="text-center py-5"
+                                colspan="6"
+                                class="text-center text-muted py-4"
                             >
 
-                                <div class="text-muted">
-
-                                    <h5>
-                                        No users found
-                                    </h5>
-
-                                    <?php if ($search !== ""): ?>
-
-                                        <p class="mb-2">
-                                            No users matched your search.
-                                        </p>
-
-                                        <a
-                                            href="index.php"
-                                            class="btn btn-sm btn-outline-primary"
-                                        >
-                                            Clear Search
-                                        </a>
-
-                                    <?php else: ?>
-
-                                        <p class="mb-0">
-                                            There are no users in the system.
-                                        </p>
-
-                                    <?php endif; ?>
-
-                                </div>
+                                No orders found.
 
                             </td>
 
                         </tr>
 
-
                     <?php endif; ?>
 
+                </tbody>
 
-                    </tbody>
-
-                </table>
-
-            </div>
+            </table>
 
         </div>
 
     </div>
 
 
+    <!-- =========================
+         LOW STOCK
+    ========================= -->
+
+    <div class="table-container shadow-sm mb-4">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+
+            <h4 class="section-title mb-0">
+                Low Stock Products
+            </h4>
+
+            <a
+                href="../products/index.php"
+                class="btn btn-primary btn-sm"
+            >
+                View Products
+            </a>
+
+        </div>
+
+
+        <div class="table-responsive">
+
+            <table class="table table-bordered table-hover align-middle">
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+                            Product ID
+                        </th>
+
+                        <th>
+                            Product Name
+                        </th>
+
+                        <th>
+                            Category
+                        </th>
+
+                        <th>
+                            Price
+                        </th>
+
+                        <th>
+                            Stock
+                        </th>
+
+                        <th>
+                            Status
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                    <?php if (
+                        $lowStockResult &&
+                        $lowStockResult->num_rows > 0
+                    ): ?>
+
+                        <?php while (
+                            $product = $lowStockResult->fetch_assoc()
+                        ): ?>
+
+                            <tr>
+
+                                <td>
+
+                                    #<?php
+                                    echo $product["ProductID"];
+                                    ?>
+
+                                </td>
+
+
+                                <td>
+
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $product["ProductName"]
+                                    );
+                                    ?>
+
+                                </td>
+
+
+                                <td>
+
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $product["Category"]
+                                    );
+                                    ?>
+
+                                </td>
+
+
+                                <td>
+
+                                    ₱<?php
+                                    echo number_format(
+                                        $product["Price"],
+                                        2
+                                    );
+                                    ?>
+
+                                </td>
+
+
+                                <td>
+
+                                    <?php if (
+                                        (int)$product["Stock"] <= 0
+                                    ): ?>
+
+                                        <span class="badge bg-danger">
+                                            Out of Stock
+                                        </span>
+
+                                    <?php else: ?>
+
+                                        <span class="badge bg-warning text-dark">
+
+                                            <?php
+                                            echo $product["Stock"];
+                                            ?>
+
+                                            left
+
+                                        </span>
+
+                                    <?php endif; ?>
+
+                                </td>
+
+
+                                <td>
+
+                                    <?php
+                                    echo htmlspecialchars(
+                                        $product["Status"]
+                                    );
+                                    ?>
+
+                                </td>
+
+                            </tr>
+
+                        <?php endwhile; ?>
+
+
+                    <?php else: ?>
+
+                        <tr>
+
+                            <td
+                                colspan="6"
+                                class="text-center text-muted py-4"
+                            >
+
+                                No low-stock products found.
+
+                            </td>
+
+                        </tr>
+
+                    <?php endif; ?>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+    <!-- BACK BUTTON -->
+
+    <div class="mt-4">
+
+        <a
+            href="../dashboard.php"
+            class="btn btn-secondary"
+        >
+            ← Back to Dashboard
+        </a>
+
+    </div>
+
+
 </div>
-
-
-
-<!-- Bootstrap JS -->
-
-<script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-></script>
 
 
 </body>
